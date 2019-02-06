@@ -1,0 +1,181 @@
+---
+title: "Week 1 DATA624 Time Series Graphics Exercises"
+author: "Jonathan Hernandez"
+date: "January 30, 2019"
+output:
+  pdf_document: default
+  word_document: default
+---
+
+    2.3 Download some monthly Australian retail data from the book website. 
+    These represent retail sales in various categories for different Australian states, 
+    and are stored in a MS-Excel file.
+
+    a. You can read the data into R with the following script:
+    retaildata <- readxl::read_excel("retail.xlsx", skip=1)
+
+- Reading in the data:
+
+```{r readRetailData}
+retaildata <- readxl::read_excel("retail.xlsx", skip=1)
+```
+
+    b. Select one of the time series as follows (but replace the column name with 
+    your own chosen column):
+    myts <- ts(retaildata[,"A3349873A"],
+      frequency=12, start=c(1982,4))
+      
+- Let's first read the data and see the column names and replace it with a column
+I choose. I'll choose say the 10th column.
+
+```{r SelectTimeSeries}
+column_name <- names(retaildata)[10] # 10th column
+myts <- ts(retaildata[,column_name],
+      frequency=12, start=c(1982,4))
+```
+
+    c. Explore your chosen retail time series using the following functions:
+    autoplot(), ggseasonplot(), ggsubseriesplot(), gglagplot(), ggAcf()
+    Can you spot any seasonality, cyclicity and trend? What do you learn about the series?
+    
+- Load the ggplot2 library and plot as requested and spot any trends,
+seasonality and cyclicity.
+
+```{r ExploreTimeSeries}
+library(ggplot2)
+library(ggfortify)
+library(fpp2)
+
+#autoplot
+autoplot(myts) + 
+  ggtitle("Autoplot of Time Series of Retail Data") +
+  xlab("Time") +
+  ylab("Sales")
+
+#ggseasonplot
+ggseasonplot(myts, year.labels=TRUE, year.labels.left=TRUE) +
+  ggtitle("Seasonal Plot of Retail Sales")
+
+# ggsubseriesplot
+ggsubseriesplot(myts) + 
+  ylab("Sales") +
+  xlab("Month") +
+  ggtitle("Seasonal Subseries Plot: Retail Sales in Australia")
+
+## gglagplot
+retail <- window(myts, start=1982)
+gglagplot(retail)
+
+# ggAcf
+ggAcf(retail, lag=50)
+```
+
+- From the the autoplot(), there appears to be a increasing trend as well as seasonality.
+This is due to the increase in data and retail sales over the years. There is also
+seasonality as about every year or so, there is a spike in sales perhaps in a certain
+month.
+
+- From the ggseasonplot(), we see that there is seasonality which now showing months,
+reveals that major increases appear going into December as well as sale spikes from
+February to around May.
+
+- Overall, there is an increasing trend and sales spike up entering in December and
+after February, for most years increases until May.
+
+
+    2.7 The arrivals data set comprises quartely international arrivals (in thousands) to
+    Australia from Japan, New Zealand, UK and the US. Use autoplot(), ggseasonplot() and 
+    ggsubseriesplot() to compare the differences between the arrivals from these four countries.
+    Can you identify any unusual observations?
+    
+- We'll take a look at the arrivals datasets from the fpp2 package as that has already
+been loaded.
+
+```{r loadarrivals}
+summary(arrivals)
+str(arrivals)
+```
+
+```{r autoplot}
+autoplot(arrivals)
+```
+
+- For these arrivals, there seems to be strong seasonalilty. For United States flights,
+there seems to be cyclic behavior. Arrivals to New Zealand show a strong increasing trend.
+Flights to the UK also have a cyclic behavior as well.
+
+- Plotting using ggseasonplot()
+
+```{r ggseasonplot}
+#ts_arrivals <- ts(arrivals, frequency = 4, start=c(1981,1))
+ggseasonplot(arrivals[,1], year.labels = TRUE) +
+  ggtitle("Seasonal Plot of International Arrivals") +
+  ylab("Arrivals")
+```
+
+- From this seasonal plot, for most years, total arrivals starts with a downward
+trend followed by a increasing trend from Q2 to Q3. Also several years there are
+both increasing and decreasing trends.
+
+```{r subseriesplot}
+ggsubseriesplot(arrivals[,1]) +
+  ylab("Arrivals (in thousands)") +
+  ggtitle("Seasonal Subplots of Arrivals")
+```
+
+- Here we see that for each quarter, the amount of arrivals is roughly the same and
+follow a similar pattern. The plot also shows that the average arrivals for Q1, Q3 and Q4
+are approximately the same. Q2 average arrivals are lower than the rest. So throughout the
+years, the average arrivals were always the same in the first quarter and the last half of
+the years.
+
+- It is quite strange that Q2 arrivals would be slighly lower than other times throughout the years.
+One would think that international flights would increase during the spring season.
+
+    2.10 dj contains 292 consecutive trading days of the Dow Jones Index. use `ddj <- diff(dj)`
+    to compute the daily changes in the index. Plot ddj and its ACF. Do the changes in the
+    Dow Jones Index look like white noise?
+    
+- Let's load the dj dataset and plot the data and examine its correlogram and check for
+white noise.
+
+```{r}
+str(dj)
+summary(dj)
+```
+
+```{r noisedj}
+ddj <- diff(dj)
+
+autoplot(ddj) +
+  xlab("Trading Day") +
+  ggtitle("Daily Changes In Trading Index")
+
+# ACF
+ggAcf(ddj, lag = 290)
+```
+
+- By Looking at the daily changes in the autoplot, the daily changes look similar to white noise
+meaning there is no trend or seasonality. The ACF plot can show otherwise as more than one lag value
+is above the bounds $\pm2/\sqrt{291} = 0.11$ which may not be white noise.
+
+    3.1 For the following series, find an appropriate Box-Cox transformation in order to stabilise
+    the variance
+    - usnetelec
+    - usgdp
+    - mcopper
+    - enplanements
+
+- Let's look at each dataset starting with its structure, then apply the Box-Cox transformation 
+to stabilise the variance.
+
+```{r}
+str(usnetelec)
+str(usgdp)
+str(mcopper)
+str(enplanements)
+```
+```
+
+
+
