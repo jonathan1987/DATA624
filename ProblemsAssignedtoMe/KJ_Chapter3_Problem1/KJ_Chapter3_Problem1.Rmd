@@ -1,0 +1,142 @@
+---
+title: "KJ_Chapter3_Problem1"
+author: "Jonathan Hernandez"
+output:
+  word_document: default
+  pdf_document: default
+---
+
+    3.1. The UC Irvine Machine Learning Repository 6 contains a data set related
+    to glass identification. The data consist of 214 glass samples labeled as one
+    of seven class categories. There are nine predictors, including the refractive
+    index and percentages of eight elements: Na, Mg, Al, Si, K, Ca, Ba, and Fe.
+    The data can be accessed via:
+    'library(mlbench)'
+    'data(Glass)'
+    'str(Glass)'
+    
+    (a) Using visualizations, explore the predictor variables to understand their
+    distributions as well as the relationships between predictors.
+    
+    (b) Do there appear to be any outliers in the data? Are any predictors skewed?
+    
+    (c) Are there any relevant transformations of one or more predictors that
+    might improve the classification model?
+    
+- Let's load the dataset as requested and examine some plots.
+
+```{r}
+library(mlbench)
+library(dplyr)
+library(ggplot2)
+library(grid)
+library(gridExtra) # grid.arrange for arranging plots
+library(corrplot)
+
+data("Glass")
+str(Glass)
+summary(Glass)
+```
+
+- Using ggplot2 with geom_histogram to see the distribution and using box-pairs.
+Make a variable to hold the plot object of each predictor variable and use
+grid.arrange to show a 3x3 layout
+
+```{r hist-class-categories}
+# each predictor variable
+RI_hist <- ggplot(Glass,aes(RI)) + geom_histogram() + ylab("")
+Na_hist <- ggplot(Glass,aes(Na)) + geom_histogram() + ylab("")
+Mg_hist <- ggplot(Glass,aes(Mg)) + geom_histogram() + ylab("")
+Al_hist <- ggplot(Glass,aes(Al)) + geom_histogram() + ylab("")
+Si_hist <- ggplot(Glass,aes(Si)) + geom_histogram() + ylab("")
+K_hist <- ggplot(Glass,aes(K)) + geom_histogram() + ylab("")
+Ca_hist <- ggplot(Glass,aes(Ca)) + geom_histogram() + ylab("")
+Ba_hist <- ggplot(Glass,aes(Ba)) + geom_histogram() + ylab("")
+Fe_hist <- ggplot(Glass,aes(Fe)) + geom_histogram() + ylab("")
+
+# make a 3x3 grid to show each one in a single plot.
+
+grid.arrange(RI_hist, Na_hist, Mg_hist,
+             Al_hist, Si_hist, K_hist,
+             Ca_hist, Ba_hist, Fe_hist, ncol=3, nrow=3,
+             top = textGrob("Histogram of Class Categories"))
+```
+
+- In these histograms of predictor variables, we see that several variables are 
+skewed. We also see that K, Ba and Fe follow quite a heavy right skewed distribution.
+The other variables besides Mg follow similar distributions as well.
+
+- Let's see the relationship of these variables using the corrplot package which
+will help us visualize the correlation matrix among these variables.
+
+```{r corrmatrix}
+corr_matrix <- cor(Glass[,-10]) # matrix to two decimal places
+corrplot(corr_matrix, method = "color")
+```
+
+- Looking the correlation plot
+
+-   Fe, Ba, doesn't have strong correlation amongst the other variables.
+-   Ca and RI have the strongest correlation (positive)
+-   There are more negative weak correlations between predictors than any other
+    correlation.
+    
+- Adding the correlation with the response variable "Type". The matrix will tell us
+how well related the predictors are to the response variable.
+
+```{r corrmatrix-with-type}
+cor(Glass[,-10], as.numeric(Glass$Type))
+```
+
+- From the above column, Mg, Al and Ba have the highest correlation in regards to glass Type.
+Mg has a strong negative relationship and Al and Ba have pretty strong positive relationships.
+
+b) We see from the histograms above from a) that many of the variables have skewness
+some more than others. Furthermore, there are several outliers by looking at the histogram.
+I would expect there to be skewness as each glass sample can have random percentages of the
+elements.
+
+c) Let's first transform the predictors Mg, K, Ba and, Fe using a box-cox transform as
+they are heavily skewed with large tails. I will use the BoxCoxTrans() function to
+achieve this so I can get the optimum lambda value for each predictor. One thing from
+the summary is that these predcitors I'm choosing have a min value of 0 so it will
+help to add a small amount say 1e-6 (0.000001) to make the function work.
+
+```{r}
+library(caret) # for boxcoxtrans function
+library(e1071) # for skewness function
+# Box-cox transforms
+Glass$K <- Glass$K + 1e-6
+Glass$Ba <- Glass$Ba + 1e-6
+Glass$Fe <- Glass$Fe + 1e-6
+Glass$Mg <- Glass$Mg + 1e-6
+```
+
+- After transforming the variables, we can then apply the Box-Cox transform to all
+the predictor variables and see the histogram of predictors. We can also see the skewness
+before and after the transformations.
+
+```{r}
+library(e1071)
+# function to use the boxcoxtrans function and predict after transforming and
+# computing skewness
+boxcoxplots <- function(class){
+  boxcox <- BoxCoxTrans(class)
+  boxcox_pred <- predict(boxcox, class)
+  # find the skewness after using the box-cox transform
+  skewness(boxcox_pred)
+}
+```
+
+- Let's do a before and after of skewness of each predictor to see if using the box-cox
+transform fixed the skewness
+
+```{r compare-skewness}
+# before
+apply(Glass[,-10], 2, skewness)
+# after
+apply(Glass[,-10], 2, boxcoxplots)
+```
+
+- The skewness was reduced to be slightly skewed instead of before, doing this transformation
+on variables especially like K, Ba, Fe and Ca and Mg might make predicting glass type better.
