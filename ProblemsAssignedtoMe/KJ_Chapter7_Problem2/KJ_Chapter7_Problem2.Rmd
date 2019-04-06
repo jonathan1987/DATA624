@@ -1,0 +1,168 @@
+---
+title: "KJ_Chapter7_Problem2"
+author: "Jonathan Hernandez"
+date: "April 2, 2019"
+output:
+  word_document: default
+  pdf_document: default
+---
+
+    7.2. Friedman (1991) introduced several benchmark data sets create by sim-
+    ulation. One of these simulations used the following nonlinear equation to
+    create data:
+  
+  $$y = 10sin(\pi x_1x_2) + 20(x_3 - 0.5)^2 + 10x_4 + 5x_5 + N(0, \sigma^2)$$
+    
+    where the x values are random variables uniformly distributed between [0,1]
+    (there are also 5 other non-informative variables also created in the simula-
+    tion). The package mlbench contains a function called mlbench.friedman1 that
+    simulates these data:
+
+```{r friedman}
+library(mlbench)
+library(caret)
+set.seed(200)
+trainingData <- mlbench.friedman1(200, sd = 1)
+## We convert the ' x ' data from a matrix to a data frame
+## One reason is that this will give the columns names.
+trainingData$x <- data.frame(trainingData$x)
+## Look at the data using
+featurePlot(trainingData$x, trainingData$y)
+## or other methods.
+## This creates a list with a vector ' y ' and a matrix
+## of predictors ' x ' . Also simulate a large test set to
+## estimate the true error rate with good precision:
+testData <- mlbench.friedman1(5000, sd = 1)
+testData$x <- data.frame(testData$x)
+```
+
+- Tune several models on these data. For example:
+
+```{r tunemodels}
+knnModel <- train(x = trainingData$x, y = trainingData$y, method = "knn",
+                  preProc = c("center", "scale"), tuneLength = 10)
+knnModel
+
+knnPred <- predict(knnModel, newdata = testData$x)
+## The function ' postResample ' can be used to get the test set
+## perforamnce values
+#postResample(pred = knnPred, obs = testData$y)
+```
+
+    Which models appear to give the best performance? Does MARS select the
+    informative predictors (those named X1 – X5)?
+    
+- The approach I will use is to look at different modeling methods for nonlinear
+regression such as Neural Networks, SVM with different kernels and
+MARS (Multivariate Adaptive Regression Splines) and make predictions as well as 
+compute the RMSE and $R^2$ values.
+
+- In using a Neural Network, we will use the train() function with the method = "nnet"
+to specify we are training a model as a neural network. The max number of parameters
+to estimate is based on $H(P+1)+H+1$ where H is the number of hidden layers we want
+and, P is the number of predictors.
+
+```{r neuralnetworkfriedman}
+set.seed(200)
+# Train a neural network model where I specify 10 hidden layers and all predictors
+# inputted to each hiden layer (linear combinations of predictors)
+neuralnet_model <- train(x=trainingData$x, y=trainingData$y, method = "nnet",
+                         preProc = c("center", "scale"), linout=TRUE,
+                         MaxNWts = 10*(ncol(trainingData$x)+1) + 10 + 1,
+                         maxit=500, trace=FALSE)
+neuralnet_model
+
+# predict with our neural network model
+neuralnet_pred <- predict(neuralnet_model, newdata=testData$x)
+postResample(pred = neuralnet_pred, obs = testData$y)
+```
+
+- Looking at the neural network model, after scaling/centering, and setting the max
+number of hidden layers to be 10, we see that train() picked the model with one 
+hidden layer and a decay value of 0.1 that minimize the RMSE.
+
+- Now, let's look at a SVM model that uses the kernel function as the radial
+basis function by using 3 kernels, Radial, polynomial and linear:
+
+```{r svmfriedman}
+library(kernlab)
+set.seed(200)
+# Train SVM models using different kernels
+# Note: you may need to install the kernlab package in order to use
+# method = svmRadial, svmPoly and svmLinear
+svm_model_radial <- train(x=trainingData$x, y=trainingData$y, method = "svmRadial",
+                        preProc = c("center", "scale"), tunelength=10)
+
+svm_model_poly <- train(x=trainingData$x, y=trainingData$y, method = "svmPoly",
+                        preProc = c("center", "scale"), tunelength=10)
+
+svm_model_linear <- train(x=trainingData$x, y=trainingData$y, method = "svmLinear",
+                        preProc = c("center", "scale"), tunelength=10)
+
+svm_model_radial
+svm_model_poly
+svm_model_linear
+
+# predict with our SVM models
+svm_pred_radial <- predict(svm_model_radial, newdata=testData$x)
+svm_pred_poly <- predict(svm_model_poly, newdata=testData$x)
+svm_pred_linear <- predict(svm_model_linear, newdata=testData$x)
+```
+
+- We see that by using SVM, using kernels such as ploynomial and radial show to
+have low RMSE and high $R^2$ values compared to using a linear kernel. This can
+probably be due to the fact that the data is nonlinear.
+
+- Finally let's see a MARS model in action (Multivariate Adaptive Regression Splines)
+and see how it compares to the other models in regards to RMSE and $R^2$
+
+```{r MARSmodel}
+# Fit a MARS model
+library(earth)
+mars_model <- train(x=trainingData$x, y=trainingData$y, method="earth",
+                    preProc=c("center", "scale"))
+mars_model
+
+# compute RMSE and R^2 for MARS model
+mars_pred <- predict(mars_model, newdata=testData$x)
+postResample(pred=mars_pred, obs=testData$y)
+```
+
+- Using the MARS model, let's see which coefficients were important as well as 
+the hinge functions used and coefficients.
+
+```{r MARSsummary}
+mars_summary <- earth(trainingData$x, trainingData$y)
+summary(mars_summary) # check out hinge functions used and coefficients
+varImp(mars_model)
+```
+
+- We see that MARS did select X1-X5 as important variables/predictors from using the
+varImp() function.
+
+- Final summary of each model and RMSE and $R^2$ based on predictions using the
+test data.
+
+```{r}
+# use postResampe() and append each result to be a dataframe
+model_metrics_summary <-
+  rbind(postResample(pred=knnPred, obs=testData$y),
+        postResample(pred=neuralnet_pred, obs=testData$y),
+        postResample(pred=svm_pred_radial, obs=testData$y),
+        postResample(pred=svm_pred_poly, obs=testData$y),
+        postResample(pred=svm_pred_linear, obs=testData$y),
+        postResample(pred=mars_pred, obs=testData$y))
+
+# convert to data frame
+model_metrics_summary <- data.frame(model_metrics_summary)
+
+# put in name of each model and then sort them based on RMSE
+rownames(model_metrics_summary) <- c("k-NN", "Neural Network", "SVM-Radial",
+                                     "SVM-Polynomial", "SVM-Linear", "MARS")
+
+model_metrics_summary[order(-model_metrics_summary$RMSE), ]
+```
+
+- The MARS model has the best performance in regards to RMSE and $R^2$ values.
+SVM using polynomial, radial, neural network, SVM using linear and k-NN are the
+2nd, 3rd, 4th, 5th and 6th best performing model respectively.
