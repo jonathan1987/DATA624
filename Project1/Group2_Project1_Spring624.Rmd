@@ -1,0 +1,280 @@
+---
+title: 'DATA624 Project #1'
+author: "Jonathan Hernandez"
+output:
+  pdf_document: default
+  word_document: default
+---
+
+```{r import_libraries, echo=FALSE, include=FALSE}
+library(readxl)
+library(dplyr)
+library(ggplot2)
+library(ggfortify)
+library(GGally)
+library(gridExtra)
+library(forecast)
+library(imputeTS)
+library(tidyverse)
+
+```
+
+- First let's acquire the data, extract the s02 group and the Var02 and Var03
+features and convert them to a time series object for analysis.
+
+```{r getdata, echo=FALSE}
+s02_data <- read_xls("Set for Class.xls", n_max = 9732)
+# For my group, I requested to look at only the Series = 's02'. Per assignment,
+# you forecast Var02 and Var03 for S02
+
+# Extract only seriesid, group, var02 and var03
+s02_data <- s02_data %>% filter(group == "S02") %>%
+  select("SeriesInd", "group", "Var02", "Var03")
+
+summary(s02_data)
+```
+
+- Convert the variables to time series objects
+```{r tsobjects, echo=FALSE}
+# Type Conversions. Change var02/03 to be time series
+s02_data_var02_ts <- ts(s02_data$Var02, start = 1, end = 1622,
+                        frequency=1)
+s02_data_var03_ts <- ts(s02_data$Var03, start = 1, end = 1622,
+                        frequency=1)
+```
+
+- We see that there are several missing data in Var03. Let's use R's 
+ImputeTS library and one of its functions na.interpolation and specify to replace 
+the NA's using the spline option which uses polynomial interpretation.
+
+```{r replaceNA, echo=FALSE}
+s02_data_var03_ts <- na.interpolation(s02_data_var03_ts, option = "spline")
+```
+
+- Let's remove the outlier from Var03 in the s02 group for better analysis
+
+```{r removevar03outlier, echo=FALSE}
+# remove the large outlier the value == 38.28 per the summary
+idx_outlier_var03 <- which.max(s02_data_var03_ts)
+s02_data_var03_ts[idx_outlier_var03] <- NA
+```
+
+- With the data selected in question, let's look at the time series of Var02 and
+Var03 using autoplot(). This will show us of the behavior of the data over time
+or the series Index
+
+```{r EDA_acf, echo=FALSE}
+# time series plot of var02
+var02_plot <- autoplot(s02_data_var02_ts) +
+  ggtitle("S02 Var02 Time Series") +
+  ylab("Var02")
+
+# time series plot of var03
+var03_plot <- autoplot(s02_data_var03_ts) + 
+  ggtitle("S02 Var03 Time Series") +
+  ylab("Var03")
+
+# 2x1 plot arrangement
+grid.arrange(var02_plot, var03_plot)
+```
+
+- By using the option "spline" in imputing data in our time series models, we see
+that it seems to do the best job in replacing NA values. Using splines estimates
+NA values using a polynomial interpolation. It helps us in the Var02 feature as
+it follows a downward trend.
+
+- Making ACF plots of each time series:
+
+```{r acfplots, echo=FALSE}
+ggAcf(s02_data_var02_ts)
+ggAcf(s02_data_var03_ts)
+```
+
+- Now with out data cleaned/imputed, let's do some forecasting using various
+techniques such as using ARIMA models, Naive forecasting, STL/ETS and Holt methods.
+I will use training/test sets preferably a 70/30 training/test set for each model.
+(training data will be from indexes 1 to $\lfloor{1622*0.7}\rfloor$, the test set
+the rest)
+
+- Let's start with fitting a naive model for both time series.
+
+```{r naivets, echo=FALSE}
+# naive forecasts and predict 140 steps ahead with 80% confidence invterval
+
+var02_window_training <- window(s02_data_var02_ts, start=1, end=floor(1622*0.7))
+var02_window_test <- window(s02_data_var02_ts, start=floor(1622*0.7))
+
+var03_window_training <- window(s02_data_var03_ts, start=1, end=floor(1622*0.7))
+var03_window_test <- window(s02_data_var03_ts, start=floor(1622*0.7))
+
+# train a naive forecast using training data
+s02_var02_naive_test_train <- naive(var02_window_training,
+                                    h = length(var02_window_test), level = c(80, 90))
+s02_var03_naive_test_train <- naive(var03_window_training,
+                                    h = length(var03_window_test), level = c(80, 90))
+
+# forecasts using naive method using the test windows/values
+s02_var02_naive_test_fit <- naive(s02_data_var02_ts, h = 140, level = c(80, 90))
+s02_var03_naive_test_fit <- naive(s02_data_var03_ts, h = 140, level = c(80, 90))
+
+# forecast values using forecast()
+
+checkresiduals(s02_var02_naive_test_fit)
+checkresiduals(s02_var03_naive_test_fit)
+```
+
+- Plotting the forecasts of both variables using the naive method
+
+```{r plotnaiveforecasts, echo=FALSE}
+# var02 plot
+autoplot(s02_var02_naive_test_fit) +
+  autolayer(s02_var02_naive_test_train, series="Naive") +
+  autolayer(s02_data_var02_ts, series="Naive") +
+  ggtitle("S02 Var02 Forecasts via Naive Forecasting") +
+  xlab("") + ylab("")
+
+# var02 plot
+autoplot(s02_var03_naive_test_fit) +
+  autolayer(s02_var03_naive_test_train, series="Naive") +
+  autolayer(s02_data_var03_ts, series="Naive") +
+  ggtitle("S02 Var03 Forecasts via Naive Forecasting") +
+  xlab("") + ylab("")
+```
+
+- Next is to use exponential smoothing and methods such as Holt's methond and
+Holt-Winters Seasonal Method. It seems that Var02 as mentioned earlier is following
+a downward trend and looks to have so seasonality so Holt's method may be useful.
+Var03 as what appears to be a seasonal trend.
+
+- Using Holt's method
+
+```{r holt_ts, echo=FALSE}
+# make holt predictions using the training data
+s02_var02_holt_test_train <- holt(var02_window_training, 
+                                  h = length(var02_window_test), level=c(80,90))
+s02_var03_holt_test_train <- holt(var03_window_training, 
+                                  h = length(var03_window_test), level=c(80,90))
+
+# forecasts using naive method using the test windows/values
+s02_var02_holt_test_fit <- holt(s02_data_var02_ts, h = 140, level=c(80,90))
+s02_var03_holt_test_fit <- holt(s02_data_var03_ts, h = 140, level=c(80,90))
+
+checkresiduals(s02_var02_holt_test_fit)
+checkresiduals(s02_var03_holt_test_fit)
+```
+
+- Forecasts using Holt's method:
+
+```{r plotholtforecasts, echo=FALSE}
+# var02 plot
+autoplot(s02_var02_holt_test_fit) +
+  autolayer(s02_var02_holt_test_train, series="Holt") +
+  autolayer(s02_data_var02_ts, series="Holt_test_data") +
+  ggtitle("S02 Var02 Forecasts via Holt's Method") +
+  xlab("") + ylab("")
+
+
+# var02 plot
+autoplot(s02_var03_holt_test_fit) +
+  autolayer(s02_var03_holt_test_train, series="Holt") +
+  autolayer(s02_data_var03_ts, series="Holt_test_data") +
+  ggtitle("S02 Var03 Forecasts via Holt's Forecasting") +
+  xlab("") + ylab("")
+```
+
+- Using now ARIMA (auto.arima) models:
+
+```{r arima_ts, echo=FALSE}
+# train an arima model using the training data
+# var02 not seasonal but more of a trend
+s02_var02_arima_train <- auto.arima(var02_window_training, seasonal = FALSE)
+s02_var03_arima_train <- Arima(var03_window_training, order = c(2,0,1))
+
+# make forecasts of the training data using arima models
+s02_var02_arima_fit <- forecast(s02_var02_arima_train, h=length(var02_window_test))
+s02_var03_arima_fit <- forecast(s02_var03_arima_train, h=length(var03_window_test))
+
+# forecast on the test data for arima
+s02_var02_arima_test <- auto.arima(s02_data_var02_ts, seasonal = FALSE) %>%
+  forecast(h=140)
+s02_var03_arima_test <- Arima(s02_data_var03_ts, order = c(2,0,1)) %>%
+  forecast(h=140)
+
+# stl decomposition
+
+checkresiduals(s02_var02_arima_test)
+checkresiduals(s02_var03_arima_test)
+```
+
+- Forecasts using auto.arima:
+
+```{r, plotarimaforecasts, echo=FALSE}
+
+# var02 plot
+autoplot(s02_var02_arima_test) +
+  autolayer(s02_var02_arima_fit, series="ARIMA") +
+  autolayer(s02_data_var02_ts, series="ARIMA True Values") +
+  ggtitle("S02 Var02 Forecasts via ARIMA Method") +
+  xlab("") + ylab("")
+
+
+# var02 plot
+autoplot(s02_var03_arima_test) +
+  autolayer(s02_var03_arima_fit, series="ARIMA") +
+  autolayer(s02_data_var03_ts, series="ARIMA True Values") +
+  ggtitle("S02 Var03 Forecasts via ARIMA Forecasting") +
+  xlab("") + ylab("")
+```
+
+- We see that the ARIMA model used for Var02 shows good prediction for the
+confidence intervals and shows the downward trend. Using the auto.arima for Var03
+doesn't show the best results from looking at the p-value of the residuals plot.
+
+- Let's now compute some metrics of our models such as RMSE and MAPE and use the
+lowest value to predict the next 140 steps/points into the future.
+
+- ARIMA evaluation
+
+```{r arimaevaluate, echo=FALSE}
+# ARIMA
+accuracy(s02_var02_arima_fit, var02_window_test)
+accuracy(s02_var03_arima_fit, var03_window_test)
+```
+
+- Holt evaluation
+
+```{r holtevaluation, echo=FALSE}
+accuracy(forecast(s02_var02_holt_test_train,
+                  h=length(var02_window_test)), var02_window_test)
+accuracy(forecast(s02_var03_holt_test_train,
+                  h=length(var03_window_test)), var03_window_test)
+```
+
+- Naive evaluation
+
+```{r naiveevaluation, echo=FALSE}
+accuracy(forecast(s02_var02_naive_test_train,
+                  h=length(var02_window_test)), var02_window_test)
+accuracy(forecast(s02_var03_naive_test_train,
+                  h=length(var03_window_test)), var03_window_test)
+```
+
+- Looks like in regards to the MAPE, the ARIMA model works for the Var03 model
+and that for Var02, the ARIMA model works best when letting auto.arima do all the work.
+
+- Finally, save our predictions 140 steps ahead (h=140)
+
+```{r, makepredictions_var02, echo=FALSE}
+predictions_var02 <- s02_var02_arima_test$mean
+write.csv(round(predictions_var02), "s02_var02_forecasts.csv")
+```
+
+```{r, makepredictions_var03, echo=FALSE}
+predictions_var03 <- s02_var03_arima_test$mean
+write.csv(round(predictions_var03, digits = 3), "s02_var03_forecasts.csv")
+```
+
+# Appendix
+
+```{r, ref.label=knitr::all_labels(),echo=TRUE,eval=FALSE}
+```
