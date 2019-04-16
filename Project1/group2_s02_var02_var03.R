@@ -61,7 +61,7 @@ checkresiduals(s02_var03_naive_test_fit)
 # var02 plot
 autoplot(s02_var02_naive_test_fit) +
   autolayer(s02_var02_naive_test_train, series="Naive") +
-  17autolayer(s02_data_var02_ts, series="Naive") +
+  autolayer(s02_data_var02_ts, series="Naive") +
   ggtitle("S02 Var02 Forecasts via Naive Forecasting") +
   xlab("") + ylab("")
 
