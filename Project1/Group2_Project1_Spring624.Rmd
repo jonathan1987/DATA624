@@ -2,6 +2,8 @@
 title: 'DATA624 Project #1'
 author: "Jonathan Hernandez"
 output:
+  html_document:
+    df_print: paged
   pdf_document: default
   word_document: default
 ---
@@ -16,7 +18,7 @@ library(gridExtra)
 library(forecast)
 library(imputeTS)
 library(tidyverse)
-
+library(kableExtra)
 ```
 
 - First let's acquire the data, extract the s02 group and the Var02 and Var03
@@ -197,7 +199,7 @@ s02_var03_arima_fit <- forecast(s02_var03_arima_train, h=length(var03_window_tes
 # forecast on the test data for arima
 s02_var02_arima_test <- auto.arima(s02_data_var02_ts, seasonal = FALSE) %>%
   forecast(h=140)
-s02_var03_arima_test <- Arima(s02_data_var03_ts, order = c(2,0,1)) %>%
+s02_var03_arima_test <- Arima(s02_data_var03_ts, order = c(2,0,1), seasonal = FALSE) %>%
   forecast(h=140)
 
 # stl decomposition
@@ -212,16 +214,16 @@ checkresiduals(s02_var03_arima_test)
 
 # var02 plot
 autoplot(s02_var02_arima_test) +
-  autolayer(s02_var02_arima_fit, series="ARIMA") +
-  autolayer(s02_data_var02_ts, series="ARIMA True Values") +
+  autolayer(s02_var02_arima_fit, series="ARIMA forecast of test data") +
+  autolayer(s02_data_var02_ts, series="ARIMA Forecast Values") +
   ggtitle("S02 Var02 Forecasts via ARIMA Method") +
   xlab("") + ylab("")
 
 
 # var02 plot
 autoplot(s02_var03_arima_test) +
-  autolayer(s02_var03_arima_fit, series="ARIMA") +
-  autolayer(s02_data_var03_ts, series="ARIMA True Values") +
+  autolayer(s02_var03_arima_fit, series="ARIMA forecast of test data") +
+  autolayer(s02_data_var03_ts, series="ARIMA Forecast Values") +
   ggtitle("S02 Var03 Forecasts via ARIMA Forecasting") +
   xlab("") + ylab("")
 ```
@@ -237,26 +239,51 @@ lowest value to predict the next 140 steps/points into the future.
 
 ```{r arimaevaluate, echo=FALSE}
 # ARIMA
-accuracy(s02_var02_arima_fit, var02_window_test)
-accuracy(s02_var03_arima_fit, var03_window_test)
+arima_accuracy_var02 <- 
+  data.frame(accuracy(s02_var02_arima_fit, var02_window_test))[2, "MAPE"]
+arima_accuracy_var03 <- 
+  data.frame(accuracy(s02_var03_arima_fit, var03_window_test))[2, "MAPE"]
 ```
 
 - Holt evaluation
 
 ```{r holtevaluation, echo=FALSE}
-accuracy(forecast(s02_var02_holt_test_train,
-                  h=length(var02_window_test)), var02_window_test)
-accuracy(forecast(s02_var03_holt_test_train,
-                  h=length(var03_window_test)), var03_window_test)
+holt_accuracy_var02 <- data.frame(accuracy(forecast(s02_var02_holt_test_train,
+                  h=length(var02_window_test)), var02_window_test))[2, "MAPE"]
+
+holt_accuracy_var03 <- data.frame(accuracy(forecast(s02_var03_holt_test_train,
+                  h=length(var03_window_test)), var03_window_test))[2, "MAPE"]
+
 ```
 
 - Naive evaluation
 
 ```{r naiveevaluation, echo=FALSE}
-accuracy(forecast(s02_var02_naive_test_train,
-                  h=length(var02_window_test)), var02_window_test)
-accuracy(forecast(s02_var03_naive_test_train,
-                  h=length(var03_window_test)), var03_window_test)
+naive_accuracy_s02 <- data.frame(accuracy(forecast(s02_var02_naive_test_train,
+                  h=length(var02_window_test)), var02_window_test))[2, "MAPE"]
+
+naive_accuracy_s03 <- data.frame(accuracy(forecast(s02_var03_naive_test_train,
+                  h=length(var03_window_test)), var03_window_test))[2, "MAPE"]
+```
+
+- Var02 MAPE evaluation
+
+```{r var02mape, echo=FALSE}
+var02_mape <- data.frame(Method=c("ARIMA", "Holt", "Naive"),
+                         Value=c(arima_accuracy_var02,
+                                 holt_accuracy_var02, 
+                                 naive_accuracy_s02))
+kable(var02_mape) %>% kable_styling(fixed_thead = T)
+```
+
+- Var03 MAPE evaluation
+
+```{r var03mape, echo=FALSE}
+var03_mape <- data.frame(Method=c("ARIMA", "Holt", "Naive"),
+                         Value=c(arima_accuracy_var03,
+                                 holt_accuracy_var03,
+                                 naive_accuracy_s03))
+kable(var03_mape) %>% kable_styling(fixed_thead = T)
 ```
 
 - Looks like in regards to the MAPE, the ARIMA model works for the Var03 model
