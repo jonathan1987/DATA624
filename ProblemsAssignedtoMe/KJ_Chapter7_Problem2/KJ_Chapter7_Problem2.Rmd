@@ -1,10 +1,11 @@
 ---
 title: "KJ_Chapter7_Problem2"
 author: "Jonathan Hernandez"
-date: "April 2, 2019"
 output:
-  word_document: default
+  html_document:
+    df_print: paged
   pdf_document: default
+  word_document: default
 ---
 
     7.2. Friedman (1991) introduced several benchmark data sets create by sim-
@@ -133,7 +134,7 @@ the hinge functions used and coefficients.
 
 ```{r MARSsummary}
 mars_summary <- earth(trainingData$x, trainingData$y)
-summary(mars_summary) # check out hinge functions used and coefficients
+#summary(mars_summary) # check out hinge functions used and coefficients
 varImp(mars_model)
 ```
 
@@ -144,6 +145,7 @@ varImp() function.
 test data.
 
 ```{r}
+library(kableExtra)
 # use postResampe() and append each result to be a dataframe
 model_metrics_summary <-
   rbind(postResample(pred=knnPred, obs=testData$y),
@@ -160,7 +162,8 @@ model_metrics_summary <- data.frame(model_metrics_summary)
 rownames(model_metrics_summary) <- c("k-NN", "Neural Network", "SVM-Radial",
                                      "SVM-Polynomial", "SVM-Linear", "MARS")
 
-model_metrics_summary[order(-model_metrics_summary$RMSE), ]
+model_metrics_summary[order(-model_metrics_summary$RMSE), ] %>% kable() %>%
+  kable_styling(row_label_position = 'r')
 ```
 
 - The MARS model has the best performance in regards to RMSE and $R^2$ values.

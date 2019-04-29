@@ -1,0 +1,233 @@
+---
+title: "KJ Chapter7 Problem 5"
+author: "Jonathan Hernandez"
+output: pdf_document
+---
+
+    7.5. Exercise 6.3 describes data for a chemical manufacturing process. Use
+    the same data imputation, data splitting, and pre-processing steps as before
+    and train several nonlinear regression models.
+    
+    (a) Which nonlinear regression model gives the optimal resampling and test
+    set performance?
+    
+    (b) Which predictors are most important in the optimal nonlinear regres-
+    sion model? Do either the biological or process variables dominate the
+    list? How do the top ten important predictors compare to the top ten
+    predictors from the optimal linear model?
+    
+    (c) Explore the relationships between the top predictors and the response for
+    the predictors that are unique to the optimal nonlinear regression model.
+    Do these plots reveal intuition about the biological or process predictors
+    and their relationship with yield?
+    
+- For (a) let's bring in some of the code from exercise 6.3 then proceed to fit
+some nonlinear regression models using original resampling (making predictions using
+the model and a resample of the training set and the test set.)
+
+```{r loadlibraries}
+library(AppliedPredictiveModeling)
+library(dplyr)
+library(caret)
+library(e1071)
+library(glmnet)
+library(corrplot)
+data(ChemicalManufacturingProcess)
+```
+
+```{r, x_y_matricies}
+# Split up the two components: the response variable as Chem_yield and
+# Chem_predictors as the matrix of predictors
+
+Chem_yield <- ChemicalManufacturingProcess$Yield # y vector (response)
+Chem_predictors <- ChemicalManufacturingProcess[, 2:58] # X matrix (explanatory vars)
+Chem_predictors <- impute(Chem_predictors, what = "median") # apply median to NA values for predictors
+```
+
+
+```{r removezerovarfeatures}
+# when evaluating lm model using train() for the first time, 
+# R complained that there were some
+# predictors with zero variance, let's see if there is a way to remove them
+zero_var <- nearZeroVar(Chem_predictors)
+str(zero_var) # output will show which column has the zero variance
+
+# extract features that don't have zero variance in the training set
+Chem_predictors <- Chem_predictors[, -zero_var]
+```
+
+- Splitting the data into a 70/30 training/test set and doing pre-processing steps
+
+```{r traintestsplit}
+set.seed(123) # set seed for reproducible result
+
+# create the data partition 70/30 training/test set 
+# data_split contains the row indicies to use in the training set, the rest in
+# the test set
+data_split <- createDataPartition(Chem_yield, p = 0.7)
+
+# Training set X and y
+chem_train_X <- Chem_predictors[data_split$Resample1, ]
+chem_train_y <- Chem_yield[data_split$Resample1]
+
+# Test set X and y
+chem_test_X <- Chem_predictors[-data_split$Resample1, ]
+chem_test_y <- Chem_yield[-data_split$Resample1]
+```
+
+- Fit a K-NN (Nearest Neighbors) model, make predictions and compute the RMSE
+for each one and the tuning parameter which in this case is k.
+
+```{r k-NN_model}
+knn_chem_model <- train(x=chem_train_X, y=chem_train_y, method = "knn",
+                          preProc = c("center", "scale"), tuneLength = 10,
+                        metric = "RMSE")
+knn_chem_model
+
+# k-NN predictions using the model and the training data after just making a 
+# k-NN model
+chem_knn_pred_training <- predict(knn_chem_model, newdata=as.matrix(chem_train_X))
+# standard predictions using the model and the test data
+chem_knn_pred_test <- predict(knn_chem_model, newdata=as.matrix(chem_test_X))
+
+# Compute the RMSE between the training responses and predicted training responses
+chem_knn_rmse_training <- postResample(pred=chem_knn_pred_training, obs=chem_train_y)
+# Compute the RMSE between the test responses and predicted test responses
+chem_knn_rmse_test <- postResample(pred=chem_knn_pred_test, obs=chem_test_y)
+
+knn_results <- data.frame(ModelName="k-NN",
+                          Training_RMSE=chem_knn_rmse_training[1],
+                          Test_RMSE=chem_knn_rmse_test[1])
+```
+
+- Fit a Neural Network model and making training and test predictions and finding
+number of hidden units.
+
+```{r NeuralNet_model}
+set.seed(123)
+# Train a neural network model where I specify 10 hidden layers and all predictors
+# inputted to each hiden layer (linear combinations of predictors)
+neuralnet_chem_model <- train(x=chem_train_X, y=chem_train_y, method = "nnet",
+                         preProc = c("center", "scale"), linout=TRUE,
+                         MaxNWts = 10*(ncol(chem_train_X)+1) + 10 + 1,
+                         maxit=500, trace=FALSE)
+neuralnet_chem_model
+
+# Neural Network predictions using the model and the training data after just making a 
+# Neural Network
+chem_neuralnet_pred_training <- predict(neuralnet_chem_model, newdata=as.matrix(chem_train_X))
+# standard predictions using the model and the test data
+chem_neuralnet_pred_test <- predict(neuralnet_chem_model, newdata=as.matrix(chem_test_X))
+
+# Compute the RMSE between the training responses and predicted training responses
+chem_neuralnet_rmse_training <- postResample(pred=chem_neuralnet_pred_training, obs=chem_train_y)
+# Compute the RMSE between the test responses and predicted test responses
+chem_neuralnet_rmse_test <- postResample(pred=chem_neuralnet_pred_test, obs=chem_test_y)
+
+# results including training/test RMSE
+neuralnet_results <- data.frame(ModelName="Neural Network",
+                          Training_RMSE=chem_neuralnet_rmse_training[1],
+                          Test_RMSE=chem_neuralnet_rmse_test[1])
+```
+
+- Fit a MARS (Multivariate Adaptive of Regression Splines) model and making training
+and test predictions.
+
+```{r MARSmodel}
+# Fit a MARS model
+library(earth)
+set.seed(123)
+mars_chem_model <- train(x=chem_train_X, y=chem_train_y, method="earth",
+                    preProc=c("center", "scale"),
+                    tuneGrid = expand.grid(.degree=1:2,.nprune=2:38))
+mars_chem_model
+
+chem_mars_pred_training <- predict(mars_chem_model, newdata=as.matrix(chem_train_X))
+chem_mars_pred_test <- predict(mars_chem_model, newdata=as.matrix(chem_test_X))
+
+chem_mars_rmse_training <- postResample(pred=chem_mars_pred_training, obs=chem_train_y)
+chem_mars_rmse_test <- postResample(pred=chem_mars_pred_test, obs=chem_test_y)
+
+mars_results <- data.frame(ModelName="MARS",
+                           Training_RMSE=chem_mars_rmse_training[1],
+                           Test_RMSE=chem_mars_rmse_test[1])
+```
+
+- Fit a SVM (Support Vector Machine) model using a radial kernel.
+
+```{r SVMmodel}
+library(kernlab)
+set.seed(123)
+svm_chem_model <- train(x=chem_train_X, y=chem_train_y, method="svmRadial",
+                    preProc=c("center", "scale"), tuneLength = 20)
+
+svm_chem_model
+
+chem_svm_pred_training <- predict(svm_chem_model, newdata=as.matrix(chem_train_X))
+chem_svm_pred_test <- predict(svm_chem_model, newdata=as.matrix(chem_test_X))
+
+chem_svm_rmse_training <- postResample(pred=chem_svm_pred_training, obs=chem_train_y)
+chem_svm_rmse_test <- postResample(pred=chem_svm_pred_test, obs=chem_test_y)
+
+svm_results <- data.frame(ModelName="SVM",
+                           Training_RMSE=chem_svm_rmse_training[1],
+                           Test_RMSE=chem_svm_rmse_test[1])
+```
+
+- Let's look at the results of each nonlinear model and see how the RMSE evaluates
+in testing and in training data:
+
+```{r modelRMSEeval}
+# summary of metrics
+model_results <- do.call("rbind", list(knn_results,
+                                       neuralnet_results,
+                                       mars_results,
+                                       svm_results))
+rownames(model_results) <- NULL
+model_results
+```
+
+- What we see is that the MARS model has the lowest training RMSE while the Neural Network
+has the smallest test RMSE. Also, the MARS model has a slightly higher RMSE than the
+Neural Network
+
+- For (b) the Neural Network model will be used and we extract the features of the model
+
+```{r nnet_features}
+important_nnet_vars <- varImp(svm_chem_model)
+important_nnet_vars
+```
+
+- We see that of the 20 most important features, 4 manufactring process features make
+the top 4 with BiologicalMaterial05 coming in 5th place and BiologicalMaterial01 coming
+in 16th place. The rest of the variables are mostly ManufacturingProcess features
+and therefore are the most important in the model. 
+
+- How do the top 10 predictor variables in our nonlinear model compare to the linear
+one from 6.3?
+
+- The 'BiologicalMaterial05' is in the top 10 for both models.
+- 'ManufacturingProcess36' is the most important predictor in both models
+- Variables "ManufacturingProcess36", "ManufacturingProcess37",
+"ManufacturingProcess32", "BiologicalMaterial05" appear in both models and the rest
+of the top 10 for each one are in either one model or the other.
+
+- For (c), let's do a correlation plot of the features from the neural network model
+
+```{r corrplotnnetfeatures}
+# convert to data frame to extract column names of top features of importance
+important_nnet_vars.df <- data.frame(Features=rownames(important_nnet_vars$importance),
+                                     Imp=important_nnet_vars$importance$Overall)
+# sort by overall importance
+important_nnet_vars.df <- important_nnet_vars.df[order(-important_nnet_vars.df$Imp),]
+# convert to character the features so they can be properly selected in the original
+# dataset
+features <- as.character(important_nnet_vars.df[1:20, "Features"])
+corrplot(cor(ChemicalManufacturingProcess[c(features,"Yield")],
+    use = "pairwise.complete.obs"),
+    tl.cex = 1, method = "number",
+    number.cex = 0.5)
+```
+
+- Much like the Correlation Plot with the lasso model, we see that the highest
+correlation value with Yield is the ManufacturingProcess32 feature.
