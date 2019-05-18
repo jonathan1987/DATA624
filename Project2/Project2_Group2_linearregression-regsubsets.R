@@ -1,47 +1,17 @@
----
-title: "DATA 624 Project 2"
-author: "Jonathan Hernandez"
-output:
-  html_document: default
-  pdf_document: default
----
-
-```{r libaries, echo=FALSE}
 suppressWarnings(suppressMessages(library(dplyr)))
 suppressWarnings(suppressMessages(library(caret)))
 suppressWarnings(suppressMessages(library(kableExtra)))
-suppressWarnings(suppressMessages(library(elasticnet)))
 suppressWarnings(suppressMessages(library(ggplot2)))
-suppressWarnings(suppressMessages(library(e1071)))
 suppressWarnings(suppressMessages(library(leaps)))
 suppressWarnings(suppressMessages(library(glmnet)))
-```
 
-- Training and test data has been loaded and let's read it in
-(The data have been imputed, removed correlated data etc)
-
-Source: https://github.com/john-grando/data624_hw_group_2/tree/master/Project2
-
-```{r readrdata, echo=FALSE}
 load(file = "train.rda")
 load(file = "test.rda")
-```
 
-- Preview the training data
-
-```{r previewdata, echo=FALSE}
 summary(train)
 str(train)
 dim(train)
-```
 
-Regression - Forward Selection
-
-- A simple multiple linear regression via forward selection. The regsubsets() function
-from the leaps package picks the best fit linear regression model and features using
-1 feature, 2 features and so on. 
-
-```{r regressionfowrardsel, echo=FALSE}
 # go through every subset and possible combination of features for a linear model
 lm_student_train <- regsubsets(PH ~ ., data = train,
                                nvmax = 32, method = "forward")
@@ -91,7 +61,7 @@ features <- names(coef(lm_student_train, which.min(rmse)))[6:(ncol(train)-2)] # 
 # formula to use to properly pass to predict() function
 form <- as.formula(paste("PH", paste("Brand.Code +" ,
                                      paste(features, collapse = " + "))
-                   ,sep = " ~ "))
+                         ,sep = " ~ "))
 
 lm_PH <- lm(form, data = train)
 pred_PH_regsubsets <- round(predict(lm_PH, test), 2)
@@ -103,44 +73,7 @@ write.table(pred_PH_regsubsets,
 # Variable Importance
 varImp_regsubsets <- varImp(lm_PH)
 varImp_regsubsets <- data.frame(Features=rownames(varImp_regsubsets),
-                                     Importance=varImp_regsubsets$Overall)
+                                Importance=varImp_regsubsets$Overall)
 varImp_regsubsets <- varImp_regsubsets[order(-varImp_regsubsets$Importance),]
 
 varImp_regsubsets %>% kable() %>% kable_styling()
-```
-
-- By using the regsubsets() function and looping through all feature number combinations,
-we were able to find the right linear regression model that minimizes the RMSE between
-the training data and using the know features and putting it into a lm object, we
-were able to make predictions of the PH levels in the test dataset.
-
-- Now, let's use elastic net with various parameters $\alpha$ and $\lambda$ using
-the train() function
-
-```{r elasticnet, echo=FALSE}
-# use train() with 5-fold, repeated 5 times and find out the minimum RMSE
-set.seed(123)
-train_control <- trainControl(method = "repeatedcv",
-                              number = 5,
-                              repeats = 5,
-                              search = "random")
-
-PH_enet_model <- train(PH ~.,
-                       data = train,
-                       method = "glmnet",
-                       preProcess = c("center", "scale"),
-                       tuneLength = 25,
-                       trControl = train_control)
-  
-# extract best RMSE value along with alpha, lambda
-PH_enet_model$results[which.min(PH_enet_model$results[, "RMSE"]), ] %>%
-  kable() %>% kable_styling(fixed_thead = T)
-
-# see the RMSE between predicted PH in the training data and the actual PH
-enet_pred_PH <- predict(PH_enet_model, newdata = train)
-rmse_train_enet <- postResample(enet_pred_PH, train$PH)
-
-# make predictions on the test dataset on PH
-enet_pred_test_PH <- round(predict(PH_enet_model, newdata = test), 2)
-write.csv(enet_pred_test_PH, "prediction-PH-enet.csv", col.names = "PH")
-```
